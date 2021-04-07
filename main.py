@@ -71,6 +71,7 @@ def initialize_R1D(alpha, Gamma, K, Km):
 
 def time_iteration1D(L, R, S, Ci, i):
     V = np.matmul(R.toarray(), Ci) + (1/2) * (S.toarray()[:,i] + S.toarray()[:,i+1])
+    if i == 0: print(V)
     return spsl.spsolve(L.tocsr(), V)
 
 def solver1D(kw, K_func, C0_func, S_func, dz, dt, depth, totalTime):
@@ -95,6 +96,7 @@ def solver1D(kw, K_func, C0_func, S_func, dz, dt, depth, totalTime):
     # The matrices for the time-iterations
     L = initialize_L1D(alpha, Gamma, K, Km)
     R = initialize_R1D(alpha, Gamma, K, Km)
+    S = 2 * Gamma * S
 
     # The actual time-iteration
     for i in range(Nt-1):
@@ -102,9 +104,10 @@ def solver1D(kw, K_func, C0_func, S_func, dz, dt, depth, totalTime):
 
     return C, z, t, K
 
+# This is just a test run to check that the solver for the 1D case is working as intended.
 kw = 0
 depth = 100
-dz = 0.01
+dz = 0.1
 dt = 0.1
 totalTime = 100
 
@@ -117,8 +120,8 @@ def C01(z):
 def S1(t):
     return np.ones(np.shape(t))
 
-C, z, t, K = solver1D(kw, K1, K1, S1, dz, dt, depth, totalTime)
+C, z, t, K = solver1D(kw, K1, C01, S1, dz, dt, depth, totalTime)
 
 plt.plot(z, C[:,0])
-plt.plot(z,C[:,1])
+plt.plot(z,C[:,-1])
 plt.show()
