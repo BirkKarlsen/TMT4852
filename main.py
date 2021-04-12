@@ -1,12 +1,9 @@
 import numpy as np
 import scipy.sparse as sps
 import scipy.sparse.linalg as spsl
-import scipy.linalg as spl
 import matplotlib.pyplot as plt
-import time
 from tqdm import tqdm
-from numba import jit, prange
-import numba_scipy
+
 
 # Physical constants for the project
 
@@ -115,13 +112,13 @@ def initialize_L_and_R2D(Nx, Nz, vx, vz, dt, dx, D, K):
     L = sps.lil_matrix((N,N))
     R = sps.lil_matrix((N,N))
 
-    for i in prange(Nx):
+    for i in range(Nx):
         for j in range(Nz):
             # The gamma-coefficients for the matrices
             Km = K[j] * dt / (2 * dx**2)
             dK = D[j] * dt / (8 * dz**2)
             vxm = vx[i,j] * dt / (4 * dx)
-            vzm = vz[i, j] * dt / (4 * dx)
+            vzm = vz[i,j] * dt / (4 * dx)
             dvx = (vx[(i+1)%Nx, j] - vx[(i-1)%Nx, j]) * dt / (4 * dx)
             dvz = (vz[i, (j+1)%Nz] - vz[i, (j-1)%Nx]) * dt / (4 * dx)
 
@@ -193,12 +190,11 @@ def solver2D(kw, K_func, C0_func, S_func, dx, dt, depth, width, totalTime, vx, v
 
     return C, z, x, t, K
 
-
 def convert_1D_to_2D(C, Nx, Nz):
     newC = np.zeros((Nx, Nz))
     for i in range(Nx):
         newC[i,:] = C[(i)*Nz:(i+1)*Nz]
-    return newC
+    return np.transpose(newC)
 
 # This is just a test run to check that the solver for the 1D case is working as intended.
 kw = 0
@@ -226,7 +222,7 @@ dt = 0.1
 totalTime = 10
 Nx = int(width//dx)
 Nz = int(depth//dx)
-vx = np.zeros((Nx, Nz))
+vx = 5 * np.ones((Nx, Nz))
 vz = np.zeros((Nx, Nz))
 
 def C02D(x,z):
@@ -238,7 +234,3 @@ def C02D(x,z):
 
 
 C, z, x, t, K = solver2D(kw, K1, C02D, S1, dx, dt, depth, width, totalTime, vx, vz)
-
-plt.imshow(convert_1D_to_2D(C[:,-1], Nx, Nz))
-plt.colorbar()
-plt.show()
