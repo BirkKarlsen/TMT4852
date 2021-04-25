@@ -34,28 +34,6 @@ D0 = 2.32e-9    # [m^2/s]
 # Functions related to the numerical computations
 
 # These functions are for the 1D case. Will generalize to 2D and 3D later.
-def initialize_L1D(alpha, Gamma, K, Km):
-    du = - alpha / 4 * Km[:-1] - alpha * K[:-1]
-    dl = alpha / 4 * Km[1:] - alpha * K[1:]
-    d = 1 + 2 * alpha * K
-
-    du[0] = -2 * alpha * K[0]
-    dl[-1] = -2 * alpha * K[-1]
-    d[0] += Gamma
-
-    return sps.diags([du, d, dl], [1, 0, -1])
-
-def initialize_R1D(alpha, Gamma, K, Km):
-    du = alpha / 4 * Km[:-1] + alpha * K[:-1]
-    dl = - alpha / 4 * Km[1:] + alpha * K[1:]
-    d = 1 - 2 * alpha * K
-
-    du[0] = 2 * alpha * K[0]
-    dl[-1] = 2 * alpha * K[-1]
-    d[0] -= Gamma
-
-    return sps.diags([du, d, dl], [1, 0, -1])
-
 def initialize_RL1D_with_BC(alpha, Gammat, Gammab, K, Km):
     duL = - alpha / 4 * Km[:-1] - alpha * K[:-1]
     dlL = alpha / 4 * Km[1:] - alpha * K[1:]
@@ -100,48 +78,20 @@ def TDMA(a, b, c, d):
 
     return x
 
-def solver1D_TDMA(kw, K_func, C0_func, S_func, dz, dt, depth, totalTime):
+
+def solver1D_TDMA_w_BC(kwt, kwb, K_func, C0_func, St_func, Sb_func, Nz, Nt, depth, totalTime):
     # Make the environment to simulate
-    Nz = int(depth//dz) + 2
-    Nt = int(totalTime//dt) + 2
     z = np.linspace(0, depth, Nz)
     t = np.linspace(0, totalTime, Nt)
+    dz = z[1] - z[0]
+    dt = t[1] - t[0]
 
     # Turn the initial distribution and K into arrays
     K = K_func(z)
     S = sps.lil_matrix((Nz, Nt))
-    S[0,:] = S_func(t)
-    C = np.zeros((Nz, Nt))
-    C[:,0] = C0_func(z)
-    Km = np.roll(K, -1) - np.roll(K, 1)
-
-    # Compute some important coefficients for the simulation
-    alpha = dt / (2 * dz**2)
-    Gamma = 2 * alpha * kw * dz * (1 - (-(3/2) * K[0] + 2*K[1] - (1/2)*K[2])/(2*K[0]))
-
-    # The matrices for the time-iterations
-    L = initialize_L1D(alpha, Gamma, K, Km)
-    R = initialize_R1D(alpha, Gamma, K, Km)
-    S = 2 * Gamma * S
-
-    # The actual time-iteration
-    for i in tqdm(range(1, Nt)):
-        V = np.matmul(R.toarray(), C[:,i-1]) + (1 / 2) * (S.toarray()[:, i-1] + S.toarray()[:, i])
-        C[:,i] = TDMA(L.diagonal(-1), L.diagonal(0), L.diagonal(1), V)
-
-    return C, z, t, K, S[0,:]
-
-def solver1D_TDMA_w_BC(kwt, kwb, K_func, C0_func, S_func, dz, dt, depth, totalTime):
-    # Make the environment to simulate
-    Nz = int(depth // dz) + 2
-    Nt = int(totalTime // dt) + 2
-    z = np.linspace(0, depth, Nz)
-    t = np.linspace(0, totalTime, Nt)
-
-    # Turn the initial distribution and K into arrays
-    K = K_func(z)
-    S = sps.lil_matrix((Nz, Nt))
-    S[0, :] = S_func(t)
+    St, Sb = sps.lil_matrix((Nz, Nt)), sps.lil_matrix((Nz, Nt))
+    St[0, :] = St_func(t)
+    Sb[-1, :] = Sb_func(t)
     C = np.zeros((Nz, Nt))
     C[:, 0] = C0_func(z)
     Km = np.roll(K, -1) - np.roll(K, 1)
@@ -153,7 +103,7 @@ def solver1D_TDMA_w_BC(kwt, kwb, K_func, C0_func, S_func, dz, dt, depth, totalTi
 
     # The matrices for the time-iterations
     L, R = initialize_RL1D_with_BC(alpha, Gammat, Gammab, K, Km)
-    S = 2 * Gammat * S
+    S = 2 * Gammat * St + 2 * Gammab * Sb
 
     # The actual time-iteration
     for i in tqdm(range(1, Nt)):
@@ -219,9 +169,11 @@ def plot_variance_and_expval(C, z, t):
 # Some temporary test variables
 kw = 10
 depth = 100
-dz = 0.01
+dz = 0.1
 dt = 0.1
-totalTime = 100
+totalTime = 60 * 60 * 24 * 365
+Nz = 1001
+Nt = 5001
 
 # functions for K(z), C_0(z) and S(t)
 
@@ -253,20 +205,54 @@ def C01(z):
     return np.exp(-(z-depth/2)**2 / (2 * (1)**2))
 
 def C02(z):
-    return 0 * np.ones(np.shape(z))
+    return 1 * np.ones(np.shape(z))
 
 def S1(t):
-    return 0.1 * np.ones(np.shape(t))
+    return 1 * np.ones(np.shape(t))
 
 def S2(t):
     return np.zeros(np.shape(t))
 
+def S3(t):
+    return 0 * np.ones(np.shape(t))
+
+
 # This is just a test run to check that the solver for the 1D case is working as intended.
+C, z, t, K, St = solver1D_TDMA_w_BC(kw, kw, K4, C02, S1, S3, Nz, Nt, depth, totalTime)
 
-C, z, t, K, St = solver1D_TDMA_w_BC(kw, kw, K3, C02, S1, dz, dt, depth, totalTime)
-
-plt.plot(z, C[:,-1])
-plt.plot(z, 0.1*np.ones(np.shape(z)))
-plt.ylim(0,0.2)
+plt.plot(C[:,-1], z, label="Oxygen concentration")
+plt.xlim(0,2)
+plt.gca().invert_yaxis()
+plt.xlabel(f"$C/C_0$ [-]")
+plt.ylabel(f"$z$ [m]")
+plt.title("Shallow waters, $L =  100$m")
+plt.legend()
 plt.show()
 
+plt.plot(K, z, label=f"$K(z)$")
+plt.gca().invert_yaxis()
+plt.xlabel(f"$K$ [m$^2$/s]")
+plt.ylabel(f"$z$ [m]")
+plt.title("Diffusion Coefficient, $L =  100$m")
+plt.legend()
+plt.show()
+
+depth = 3000
+C, z, t, K, St = solver1D_TDMA_w_BC(kw, kw, K5, C02, S1, S3, Nz, Nt, depth, totalTime)
+
+plt.plot(C[:,-1], z, label="Oxygen concentration")
+plt.xlim(0,2)
+plt.gca().invert_yaxis()
+plt.xlabel(f"$C/C_0$ [-]")
+plt.ylabel(f"$z$ [m]")
+plt.title("Deep sea, $L =  3000$m")
+plt.legend()
+plt.show()
+
+plt.plot(K, z, label=f"$K(z)$")
+plt.gca().invert_yaxis()
+plt.xlabel(f"$K$ [m$^2$/s]")
+plt.ylabel(f"$z$ [m]")
+plt.title("Diffusion Coefficient, $L =  3000$m")
+plt.legend()
+plt.show()
